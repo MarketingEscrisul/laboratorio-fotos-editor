@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Laboratório de fotos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+:root{
+  --bg:#E9EAE7; --surface:#F6F6F4; --ink:#1A1B1E; --muted:#62656B; --line:#CDD0CC;
+  --accent:#B3301C; --accent-ink:#FFFFFF; --film:#1D1E20; --film-hole:#E9EAE7;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131415; --surface:#1C1D1F; --ink:#ECECE9; --muted:#9A9DA3; --line:#2D2F32;
+    --accent:#E2553D; --accent-ink:#140806; --film:#0A0A0B; --film-hole:#131415;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131415; --surface:#1C1D1F; --ink:#ECECE9; --muted:#9A9DA3; --line:#2D2F32;
+  --accent:#E2553D; --accent-ink:#140806; --film:#0A0A0B; --film-hole:#131415;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+html,body{margin:0}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:"Archivo",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:15px; line-height:1.45; min-height:100%;
+}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.wrap{max-width:1320px;margin:0 auto;padding:20px 20px 40px}
+header.top{display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px}
+h1{
+  margin:0;font-weight:800;font-stretch:62%;font-size:clamp(34px,5vw,56px);
+  line-height:.9;letter-spacing:-.01em;
+}
+.top p{margin:0;color:var(--muted);max-width:44ch}
+
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:20px;align-items:start}
+@media (max-width:900px){.layout{grid-template-columns:1fr}}
+
+/* Preview */
+.stage{
+  position:relative;background:var(--surface);border:1px solid var(--line);
+  border-radius:6px;min-height:min(70vh,640px);display:flex;align-items:center;justify-content:center;
+  overflow:hidden;
+}
+.stage.drag{border-color:var(--accent);box-shadow:inset 0 0 0 2px var(--accent)}
+.stage canvas{display:block;max-width:100%;max-height:min(78vh,820px);width:auto;height:auto;cursor:crosshair}
+.empty{text-align:center;padding:40px 24px;max-width:40ch}
+.empty strong{display:block;font-stretch:75%;font-weight:700;font-size:26px;line-height:1.1;margin-bottom:8px}
+.empty p{color:var(--muted);margin:0 0 18px}
+.focus-mark{
+  position:absolute;width:34px;height:34px;margin:-17px 0 0 -17px;border-radius:50%;
+  border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.5);pointer-events:none;display:none;
+}
+.focus-mark::after{content:"";position:absolute;left:50%;top:50%;width:4px;height:4px;margin:-2px;background:#fff;border-radius:50%}
+.badge{
+  position:absolute;left:12px;top:12px;background:rgba(0,0,0,.62);color:#fff;
+  padding:4px 10px;border-radius:3px;font-size:13px;display:none;
+}
+.busy{position:absolute;right:12px;top:12px;background:rgba(0,0,0,.62);color:#fff;padding:4px 10px;border-radius:3px;font-size:13px;display:none}
+
+.under{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.hint{color:var(--muted);font-size:13px}
+
+.btn{
+  border:1px solid var(--line);background:var(--surface);padding:9px 14px;border-radius:4px;cursor:pointer;
+  font-weight:600;font-size:14px;user-select:none;-webkit-user-select:none;touch-action:none;
+}
+.btn:hover{border-color:var(--ink)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.07)}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* Queue */
+.queue{display:flex;gap:8px;overflow-x:auto;padding:12px 0 4px}
+.qitem{
+  flex:0 0 auto;width:72px;height:72px;border-radius:4px;overflow:hidden;border:2px solid transparent;
+  padding:0;background:var(--surface);cursor:pointer;position:relative;
+}
+.qitem img{width:100%;height:100%;object-fit:cover;display:block}
+.qitem[aria-current="true"]{border-color:var(--accent)}
+.qitem .x{
+  position:absolute;right:2px;top:2px;width:20px;height:20px;border-radius:50%;border:0;
+  background:rgba(0,0,0,.65);color:#fff;font-size:13px;line-height:20px;cursor:pointer;padding:0;
+}
+
+/* Panel */
+.panel{display:flex;flex-direction:column;gap:18px}
+.panel h2{margin:0 0 8px;font-size:15px;font-weight:700}
+
+/* Film strip of presets */
+.strip{
+  background:var(--film);border-radius:4px;padding:16px 26px;position:relative;
+  display:flex;flex-direction:column;gap:10px;
+}
+.strip::before,.strip::after{
+  content:"";position:absolute;top:8px;bottom:8px;width:10px;
+  background:repeating-linear-gradient(to bottom,var(--film-hole) 0 8px,transparent 8px 18px);
+  border-radius:2px;
+}
+.strip::before{left:8px}.strip::after{right:8px}
+.frame{
+  display:grid;grid-template-columns:76px 1fr;gap:12px;align-items:center;text-align:left;
+  background:transparent;border:1px solid #2c2d30;border-radius:3px;padding:6px;cursor:pointer;color:#E8E8E5;
+}
+.frame:hover{border-color:#55575c}
+.frame[aria-pressed="true"]{border-color:var(--accent);background:rgba(255,255,255,.04)}
+.frame canvas,.frame .ph{width:76px;height:76px;border-radius:2px;display:block;object-fit:cover;background:#2a2b2e}
+.frame b{display:block;font-stretch:80%;font-size:18px;font-weight:700;line-height:1.1}
+.frame span{display:block;font-size:12.5px;color:#a7a9ad;line-height:1.35;margin-top:3px}
+@media (max-width:900px){
+  .strip{flex-direction:row;overflow-x:auto;padding:24px 14px}
+  .strip::before,.strip::after{top:6px;bottom:auto;left:8px;right:8px;width:auto;height:10px;
+    background:repeating-linear-gradient(to right,var(--film-hole) 0 8px,transparent 8px 18px)}
+  .strip::after{top:auto;bottom:6px}
+  .frame{grid-template-columns:1fr;flex:0 0 132px;padding:6px}
+  .frame canvas,.frame .ph{width:100%;height:110px}
+  .frame span{display:none}
+}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:14px 16px}
+.row{display:grid;grid-template-columns:96px 1fr 42px;gap:10px;align-items:center;margin:8px 0}
+.row label{font-size:13.5px}
+.row output{font-size:12.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent)}
+details summary{cursor:pointer;font-weight:700;font-size:15px;list-style:none;display:flex;justify-content:space-between;align-items:center}
+details summary::-webkit-details-marker{display:none}
+details summary::after{content:"+";font-weight:400;font-size:20px;color:var(--muted)}
+details[open] summary::after{content:"−"}
+.reset{background:none;border:0;color:var(--accent);cursor:pointer;padding:0;font-size:13px;font-weight:600;margin-top:6px}
+.exports{display:flex;flex-direction:column;gap:8px}
+.exports .btn{width:100%}
+.msg{font-size:13px;color:var(--muted);min-height:1.2em;margin:0}
+.msg.err{color:var(--accent)}
+.cropbox{position:absolute;border:1px solid #fff;box-shadow:0 0 0 9999px rgba(0,0,0,.58);cursor:move;touch-action:none;display:none}
+.cropbox::before{content:"";position:absolute;inset:0;pointer-events:none;background:
+  linear-gradient(to right,transparent calc(33.33% - .5px),rgba(255,255,255,.45) calc(33.33% - .5px) calc(33.33% + .5px),transparent calc(33.33% + .5px) calc(66.66% - .5px),rgba(255,255,255,.45) calc(66.66% - .5px) calc(66.66% + .5px),transparent calc(66.66% + .5px)),
+  linear-gradient(to bottom,transparent calc(33.33% - .5px),rgba(255,255,255,.45) calc(33.33% - .5px) calc(33.33% + .5px),transparent calc(33.33% + .5px) calc(66.66% - .5px),rgba(255,255,255,.45) calc(66.66% - .5px) calc(66.66% + .5px),transparent calc(66.66% + .5px))}
+.cropbox .h{position:absolute;width:20px;height:20px;background:#fff;border-radius:2px;touch-action:none;box-shadow:0 0 0 1px rgba(0,0,0,.4)}
+.h.nw{left:-10px;top:-10px;cursor:nwse-resize}.h.ne{right:-10px;top:-10px;cursor:nesw-resize}
+.h.sw{left:-10px;bottom:-10px;cursor:nesw-resize}.h.se{right:-10px;bottom:-10px;cursor:nwse-resize}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 12px}
+.chip{border:1px solid var(--line);background:var(--bg);padding:6px 11px;border-radius:3px;cursor:pointer;font-size:13px;font-weight:600}
+.chip:hover{border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.sublabel{font-size:13px;color:var(--muted);margin:0}
+.btn[aria-pressed="true"]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.cb{position:absolute;left:2px;bottom:2px;min-width:22px;height:22px;border-radius:11px;border:0;background:rgba(0,0,0,.65);color:#fff;font-size:12px;font-weight:700;cursor:pointer;padding:0 6px;line-height:22px}
+.cb[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+#collageBox{margin-top:14px}
+#collageBox canvas{display:block;max-width:100%;max-height:min(78vh,820px);width:auto;height:auto;margin:0 auto;border-radius:3px}
+.check{display:flex;gap:8px;align-items:center;font-size:13.5px;margin:10px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Laboratório de fotos</h1>
+    <p>Cinco looks prontos, tirados das suas referências. Escolha um, ajuste a força e exporte uma foto ou o lote inteiro.</p>
+  </header>
+
+  <div class="layout">
+    <section>
+      <div class="stage" id="stage">
+        <div class="empty" id="empty">
+          <strong>Solte as fotos aqui</strong>
+          <p>JPG, PNG ou WEBP. Pode mandar várias de uma vez: o mesmo look vale para todas.</p>
+          <button class="btn primary" id="pickBtn" type="button">Escolher fotos</button>
+        </div>
+        <canvas id="view" hidden aria-label="Prévia da foto editada"></canvas>
+        <div class="focus-mark" id="focusMark"></div>
+        <div class="cropbox" id="cropbox" aria-label="Moldura de corte"><span class="h nw" data-h="nw"></span><span class="h ne" data-h="ne"></span><span class="h sw" data-h="sw"></span><span class="h se" data-h="se"></span></div>
+        <div class="badge" id="badge">Original</div>
+        <div class="busy" id="busy">Revelando…</div>
+      </div>
+      <input type="file" id="file" accept="image/jpeg,image/png,image/webp" multiple class="sr">
+
+      <div class="under" id="under" hidden>
+        <button class="btn" id="compareBtn" type="button" aria-label="Segure para ver a foto original">Segure para ver o original</button>
+        <button class="btn" id="cropBtn" type="button" aria-pressed="false">Cortar</button>
+        <button class="btn" id="addBtn" type="button">Adicionar fotos</button>
+        <span class="hint" id="focusHint">Toque na foto para marcar onde fica o rosto.</span>
+      </div>
+      <div class="queue" id="queue" aria-label="Fotos carregadas"></div>
+      <div class="card" id="collageBox" hidden>
+        <h2>Prévia da colagem</h2>
+        <canvas id="collageView" aria-label="Prévia da colagem com fade"></canvas>
+      </div>
+    </section>
+
+    <aside class="panel">
+      <div>
+        <h2>Looks</h2>
+        <div class="strip" id="strip" role="group" aria-label="Escolha o look"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-top:0">
+          <label for="intensity">Força</label>
+          <input type="range" id="intensity" min="0" max="150" value="100">
+          <output id="intensityOut">100%</output>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Corte e tamanho</h2>
+        <p class="sublabel">Proporção</p>
+        <div class="chips" id="ratios" role="group" aria-label="Proporção do corte"></div>
+        <p class="sublabel">Largura final</p>
+        <div class="chips" id="sizes" role="group" aria-label="Largura final da foto" style="margin-bottom:6px"></div>
+        <p class="hint" style="margin:0">A proporção vale para todas as fotos. Em “Cortar”, arraste a moldura para enquadrar cada uma.</p>
+      </div>
+
+      <div class="card" id="collageCard">
+        <h2>Colagem com fade</h2>
+        <p class="hint" id="cHint" style="margin:0 0 10px">Marque de 2 a 4 fotos na fila com o botão “+”, na ordem em que devem aparecer.</p>
+        <p class="sublabel">Disposição</p>
+        <div class="chips" id="cLayouts" role="group" aria-label="Disposição da colagem"></div>
+        <p class="sublabel">Formato</p>
+        <div class="chips" id="cFormats" role="group" aria-label="Formato da colagem"></div>
+        <div class="row" style="margin-top:0">
+          <label for="cFade">Fade</label>
+          <input type="range" id="cFade" min="0" max="60" value="30">
+          <output id="cFadeOut">30%</output>
+        </div>
+        <label class="check"><input type="checkbox" id="cLook" checked> Aplicar o look atual nas fotos</label>
+        <button class="btn primary" id="cMake" type="button" style="width:100%">Montar colagem</button>
+        <button class="btn" id="cSave" type="button" style="width:100%;margin-top:8px" disabled>Baixar colagem</button>
+        <p class="hint" style="margin:8px 0 0">Toque numa foto da fila e clique na imagem para marcar o rosto: a colagem enquadra a foto em volta desse ponto.</p>
+      </div>
+
+      <details class="card" id="fine">
+        <summary>Ajuste fino</summary>
+        <div id="sliders"></div>
+        <button class="reset" id="resetAdj" type="button">Zerar ajustes</button>
+      </details>
+
+      <div class="card exports">
+        <h2>Exportar</h2>
+        <button class="btn primary" id="exportOne" type="button" disabled>Baixar esta foto</button>
+        <button class="btn" id="exportAll" type="button" disabled>Baixar todas (.zip)</button>
+        <p class="msg" id="msg" role="status"></p>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+
+/* ---------- Looks ---------- */
+const NEUTRAL = {exp:0,contrast:1,sat:1,vib:0,temp:0,tint:0,fade:0,hcap:0,sh:[0,0,0],hi:[0,0,0],bw:0,grain:0,gsize:1.4,vig:0,flash:0,hal:0,zoom:0,clear:.24};
+
+const PRESETS = [
+  {id:"roma", name:"Roma ao sol", desc:"Filme diurno: céu azul profundo, pele quente, grão fino.",
+   p:{exp:.08,contrast:1.14,sat:1.2,vib:.12,temp:.28,tint:.04,fade:.035,hcap:.02,sh:[-.015,.01,.04],hi:[.035,.015,-.02],grain:.2,gsize:1.5,vig:.14,hal:.14}},
+  {id:"ambar", name:"Estúdio âmbar", desc:"Fundo âmbar, contraste denso, brilho suave nos realces.",
+   p:{exp:-.06,contrast:1.26,sat:1.06,vib:.05,temp:.5,tint:.04,fade:.02,hcap:.02,sh:[.045,.015,-.02],hi:[.03,.012,-.025],grain:.14,gsize:1.4,vig:.48,hal:.26}},
+  {id:"editorial", name:"Cinza editorial", desc:"Tons frios e contidos, pretos levemente lavados.",
+   p:{exp:.05,contrast:.92,sat:.76,vib:-.05,temp:-.14,tint:0,fade:.055,hcap:.04,sh:[-.012,.006,.03],hi:[.01,.006,0],grain:.07,gsize:1.3,vig:.12}},
+  {id:"flash", name:"Flash noturno", desc:"Flash direto de câmera de filme: sombras esverdeadas, grão forte.",
+   p:{exp:.12,contrast:1.3,sat:1.12,vib:.04,temp:.14,tint:-.09,fade:.06,hcap:.03,sh:[-.02,.035,.012],hi:[.04,.02,-.005],grain:.34,gsize:1.8,vig:.5,flash:.28,hal:.2}},
+  {id:"pb", name:"P&B em movimento", desc:"Preto e branco com desfoque radial em volta do rosto.",
+   p:{exp:-.05,contrast:1.34,sat:1,bw:1,fade:.045,hcap:.03,grain:.36,gsize:1.7,vig:.36,zoom:.62,clear:.22}}
+];
+
+const ADJ = [
+  {k:"exp", label:"Exposição"}, {k:"contrast", label:"Contraste"}, {k:"sat", label:"Saturação"},
+  {k:"temp", label:"Temperatura"}, {k:"tint", label:"Matiz"}, {k:"fade", label:"Desbotar"},
+  {k:"grain", label:"Granulado"}, {k:"vig", label:"Vinheta"}, {k:"hal", label:"Brilho"}, {k:"zoom", label:"Desfoque"}
+];
+const ADJ_SCALE = {exp:1,contrast:.4,sat:.5,temp:.5,tint:.3,fade:.12,grain:.4,vig:.5,hal:.4,zoom:.8};
+
+const state = {images:[], cur:-1, preset:"roma", intensity:100, adj:Object.fromEntries(ADJ.map(a=>[a.k,0])), ratio:"livre", outSize:"orig", cropping:false, collage:[], cLayout:"v", cFormat:"4:5", cFade:30};
+
+function params(presetId, intensity, adj){
+  const P = Object.assign({}, NEUTRAL, PRESETS.find(x=>x.id===presetId).p);
+  const t = intensity/100, o = {};
+  for (const k in NEUTRAL){
+    if (k==="gsize"||k==="clear"){o[k]=P[k];continue}
+    if (Array.isArray(NEUTRAL[k])) o[k]=NEUTRAL[k].map((n,i)=>n+(P[k][i]-n)*t);
+    else o[k]=NEUTRAL[k]+(P[k]-NEUTRAL[k])*t;
+  }
+  if (adj) for (const k in ADJ_SCALE) o[k]+= (adj[k]/100)*ADJ_SCALE[k];
+  o.contrast=Math.max(.4,o.contrast); o.sat=Math.max(0,o.sat);
+  o.bw=Math.min(1,Math.max(0,o.bw));
+  for (const k of ["fade","grain","vig","hal","zoom","flash"]) o[k]=Math.max(0,o[k]);
+  o.fade=Math.min(.3,o.fade); o.vig=Math.min(1,o.vig);
+  return o;
+}
+
+/* ---------- Processing ---------- */
+const clamp = v => v<0?0:v>1?1:v;
+function noiseField(n){ // approx gaussian in [-1,1]
+  const a=new Float32Array(n);
+  for(let i=0;i<n;i++){a[i]=(Math.random()+Math.random()+Math.random()-1.5)/1.5}
+  return a;
+}
+function makeCanvas(w,h){const c=document.createElement("canvas");c.width=w;c.height=h;return c}
+
+function render(src, P, fx, fy, scale){
+  const w=src.width, h=src.height;
+  const c=makeCanvas(w,h), ctx=c.getContext("2d",{willReadFrequently:true});
+  ctx.drawImage(src,0,0);
+  const id=ctx.getImageData(0,0,w,h), d=id.data;
+
+  // LUTs
+  const em=Math.pow(2,P.exp), expL=new Float32Array(256);
+  for(let i=0;i<256;i++){let l=Math.pow(i/255,2.2)*em; if(l>.8) l=.8+.2*(1-Math.exp(-(l-.8)/.2)); expL[i]=Math.pow(l,1/2.2)}
+  const N=1024, tone=new Float32Array(N+1), a=P.contrast;
+  for(let i=0;i<=N;i++){
+    const x=i/N;
+    let y = x<.5 ? .5*Math.pow(2*x,a) : 1-.5*Math.pow(2*(1-x),a);
+    y = P.fade + y*(1-P.fade-P.hcap);
+    tone[i]=y;
+  }
+  const rw=1+P.temp*.12+P.tint*.02, gw=1-P.tint*.06, bwm=1-P.temp*.12+P.tint*.02;
+  const m=Math.max(w,h)*.5, cx=fx*w, cy=fy*h, fl=P.flash;
+  for(let y=0,i=0;y<h;y++){
+    const dy=(y-cy)/m, dy2=dy*dy;
+    for(let x=0;x<w;x++,i+=4){
+      let r=expL[d[i]]*rw, g=expL[d[i+1]]*gw, b=expL[d[i+2]]*bwm;
+      let lum=.2126*r+.7152*g+.0722*b;
+      const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+      const s=P.sat+P.vib*(1-Math.min(1,(mx-mn)*2));
+      r=lum+(r-lum)*s; g=lum+(g-lum)*s; b=lum+(b-lum)*s;
+      if(P.bw>0){const bl=.3*r+.59*g+.11*b; r+=(bl-r)*P.bw; g+=(bl-g)*P.bw; b+=(bl-b)*P.bw}
+      r=tone[(clamp(r)*N)|0]; g=tone[(clamp(g)*N)|0]; b=tone[(clamp(b)*N)|0];
+      lum=.2126*r+.7152*g+.0722*b;
+      const ws=(1-lum)*(1-lum), wh=lum*lum, cm=1-P.bw;
+      r+= (P.sh[0]*ws+P.hi[0]*wh)*cm; g+=(P.sh[1]*ws+P.hi[1]*wh)*cm; b+=(P.sh[2]*ws+P.hi[2]*wh)*cm;
+      if(fl>0){const dx=(x-cx)/m; const f=1+fl*(.55-Math.min(1.2,(dx*dx+dy2)*1.4)); r*=f; g*=f; b*=f}
+      d[i]=clamp(r)*255; d[i+1]=clamp(g)*255; d[i+2]=clamp(b)*255;
+    }
+  }
+  ctx.putImageData(id,0,0);
+
+  // Radial zoom blur around focus
+  if(P.zoom>.01){
+    const B=makeCanvas(w,h), bx=B.getContext("2d");
+    bx.drawImage(c,0,0);
+    const steps=16;
+    for(let k=1;k<=steps;k++){
+      const s=1+P.zoom*.13*k/steps;
+      bx.save(); bx.globalAlpha=1/(k+1);
+      bx.translate(cx,cy); bx.scale(s,s); bx.translate(-cx,-cy);
+      bx.drawImage(c,0,0); bx.restore();
+    }
+    const S=makeCanvas(w,h), sx=S.getContext("2d");
+    sx.drawImage(c,0,0);
+    sx.globalCompositeOperation="destination-in";
+    const r0=P.clear*m, gr=sx.createRadialGradient(cx,cy,r0*.75,cx,cy,r0*1.9);
+    gr.addColorStop(0,"rgba(0,0,0,1)"); gr.addColorStop(1,"rgba(0,0,0,0)");
+    sx.fillStyle=gr; sx.fillRect(0,0,w,h);
+    bx.drawImage(S,0,0);
+    ctx.clearRect(0,0,w,h); ctx.drawImage(B,0,0);
+  }
+
+  // Halation: warm glow from highlights
+  if(P.hal>.01){
+    const sw=Math.max(8,Math.round(w/14)), shh=Math.max(8,Math.round(h/14));
+    const sm=makeCanvas(sw,shh), smx=sm.getContext("2d",{willReadFrequently:true});
+    smx.drawImage(c,0,0,sw,shh);
+    const sd=smx.getImageData(0,0,sw,shh), q=sd.data;
+    const tint=P.bw>.5?[1,1,1]:[1,.5,.28];
+    for(let i=0;i<q.length;i+=4){
+      const l=(.2126*q[i]+.7152*q[i+1]+.0722*q[i+2])/255, v=Math.max(0,(l-.68)/.32);
+      q[i]=v*255*tint[0]; q[i+1]=v*255*tint[1]; q[i+2]=v*255*tint[2];
+    }
+    smx.putImageData(sd,0,0);
+    const sm2=makeCanvas(Math.max(4,sw>>1),Math.max(4,shh>>1));
+    sm2.getContext("2d").drawImage(sm,0,0,sm2.width,sm2.height);
+    ctx.save(); ctx.imageSmoothingQuality="high"; ctx.globalCompositeOperation="screen";
+    ctx.globalAlpha=Math.min(1,P.hal); ctx.drawImage(sm,0,0,w,h);
+    ctx.globalAlpha=Math.min(1,P.hal*.8); ctx.drawImage(sm2,0,0,w,h);
+    ctx.restore();
+  }
+
+  // Vignette + grain
+  if(P.vig>.01||P.grain>.01){
+    const id2=ctx.getImageData(0,0,w,h), e=id2.data;
+    const gs=Math.max(1,P.gsize*scale), gW=Math.ceil(w/gs)+1, gH=Math.ceil(h/gs)+1;
+    const nz=P.grain>.01?noiseField(gW*gH):null, ga=P.grain*.11;
+    const hw=w/2, hh=h/2;
+    for(let y=0,i=0;y<h;y++){
+      const vy=(y-hh)/hh, ny=((y/gs)|0)*gW;
+      for(let x=0;x<w;x++,i+=4){
+        let r=e[i]/255,g=e[i+1]/255,b=e[i+2]/255;
+        if(P.vig>.01){const vx=(x-hw)/hw; const dd=(vx*vx+vy*vy)/2; const v=1-P.vig*.9*Math.pow(dd,1.25); r*=v;g*=v;b*=v}
+        if(nz){const l=.2126*r+.7152*g+.0722*b; const n=nz[ny+((x/gs)|0)]*ga*(4*l*(1-l)+.3); r+=n;g+=n;b+=n}
+        e[i]=clamp(r)*255; e[i+1]=clamp(g)*255; e[i+2]=clamp(b)*255;
+      }
+    }
+    ctx.putImageData(id2,0,0);
+  }
+  return c;
+}
+
+/* ---------- UI ---------- */
+const $=id=>document.getElementById(id);
+const view=$("view"), stage=$("stage"), fileIn=$("file"), msg=$("msg");
+let comparing=false, raf=0, thumbTimer=0;
+
+function setMsg(t,err){msg.textContent=t||""; msg.classList.toggle("err",!!err)}
+function scaled(img,maxSide){
+  const s=Math.min(1,maxSide/Math.max(img.naturalWidth,img.naturalHeight));
+  const c=makeCanvas(Math.round(img.naturalWidth*s),Math.round(img.naturalHeight*s));
+  const x=c.getContext("2d"); x.imageSmoothingQuality="high"; x.drawImage(img,0,0,c.width,c.height); return c;
+}
+function loadFile(f){
+  return new Promise((res,rej)=>{
+    const url=URL.createObjectURL(f), img=new Image();
+    img.onload=()=>res({img,url}); img.onerror=()=>{URL.revokeObjectURL(url);rej(f)}; img.src=url;
+  });
+}
+async function addFiles(files){
+  const list=[...files].filter(f=>/^image\//.test(f.type)||/\.(jpe?g|png|webp)$/i.test(f.name));
+  const bad=[];
+  for(const f of list){
+    try{
+      const {img,url}=await loadFile(f);
+      const it={name:f.name.replace(/\.[^.]+$/,""),img,url,fx:.5,fy:.4,prev:scaled(img,1400),thumb:scaled(img,220)};
+      it.crop=centerCrop(it); state.images.push(it);
+    }catch(e){bad.push(f.name)}
+  }
+  if(bad.length) setMsg("Não consegui abrir "+bad.join(", ")+". Use JPG, PNG ou WEBP.",true); else setMsg("");
+  if(state.cur<0&&state.images.length) state.cur=0;
+  refreshAll();
+}
+function cur(){return state.images[state.cur]}
+
+/* crop */
+const RATIOS=[["livre","Livre",null],["1:1","1:1",1],["4:5","4:5",.8],["3:4","3:4",.75],["9:16","9:16",9/16],["16:9","16:9",16/9]];
+const SIZES=[["orig","Original"],["1080","1080 px"],["2048","2048 px"]];
+function ratioVal(){return RATIOS.find(r=>r[0]===state.ratio)[2]}
+function centerCrop(it){
+  const r=ratioVal(); if(!r) return {x:0,y:0,w:1,h:1};
+  const ia=it.img.naturalWidth/it.img.naturalHeight; let w=1,h=1;
+  if(ia>r) w=r/ia; else h=ia/r;
+  return {x:(1-w)/2,y:(1-h)/2,w,h};
+}
+function cropCanvas(src,c){
+  const sx=Math.round(c.x*src.width), sy=Math.round(c.y*src.height);
+  const sw=Math.max(1,Math.min(src.width-sx,Math.round(c.w*src.width))), sh=Math.max(1,Math.min(src.height-sy,Math.round(c.h*src.height)));
+  const o=makeCanvas(sw,sh); o.getContext("2d").drawImage(src,sx,sy,sw,sh,0,0,sw,sh); return o;
+}
+const localFocus=it=>[(it.fx-it.crop.x)/it.crop.w,(it.fy-it.crop.y)/it.crop.h];
+const sc=c=>Math.max(c.width,c.height)/1400;
+
+function drawPreview(){
+  cancelAnimationFrame(raf);
+  raf=requestAnimationFrame(()=>{
+    const it=cur(); if(!it) return;
+    const P=params(state.preset,state.intensity,state.adj);
+    let out;
+    if(state.cropping) out=comparing?it.prev:render(it.prev,P,it.fx,it.fy,sc(it.prev));
+    else{const src=cropCanvas(it.prev,it.crop), [lx,ly]=localFocus(it); out=comparing?src:render(src,P,lx,ly,sc(src))}
+    view.width=out.width; view.height=out.height; view.getContext("2d").drawImage(out,0,0);
+    placeFocus(); placeCrop(); drawCollage();
+  });
+}
+function placeFocus(){
+  const it=cur(), mark=$("focusMark"), P=params(state.preset,state.intensity,state.adj);
+  const uses=P.zoom>.01||P.flash>.01;
+  $("focusHint").hidden=!uses||state.cropping;
+  if(!it||comparing||state.cropping||!uses){mark.style.display="none";return}
+  const [lx,ly]=localFocus(it);
+  if(lx<0||lx>1||ly<0||ly>1){mark.style.display="none";return}
+  const vr=view.getBoundingClientRect(), sr=stage.getBoundingClientRect();
+  mark.style.left=(vr.left-sr.left+lx*vr.width)+"px"; mark.style.top=(vr.top-sr.top+ly*vr.height)+"px";
+  mark.style.display="block";
+}
+function placeCrop(){
+  const box=$("cropbox"), it=cur();
+  if(!it||!state.cropping||comparing){box.style.display="none";return}
+  const vr=view.getBoundingClientRect(), sr=stage.getBoundingClientRect(), c=it.crop;
+  box.style.left=(vr.left-sr.left+c.x*vr.width)+"px"; box.style.top=(vr.top-sr.top+c.y*vr.height)+"px";
+  box.style.width=(c.w*vr.width)+"px"; box.style.height=(c.h*vr.height)+"px";
+  box.style.display="block";
+}
+function setCropping(v){
+  state.cropping=v; const b=$("cropBtn");
+  b.setAttribute("aria-pressed",String(v)); b.textContent=v?"Concluir corte":"Cortar";
+  drawPreview(); drawThumbs();
+}
+function buildChips(id,list,key,onPick){
+  const box=$(id);
+  for(const [k,label] of list){
+    const b=document.createElement("button"); b.type="button"; b.className="chip"; b.dataset.k=k; b.textContent=label;
+    b.setAttribute("aria-pressed",String(state[key]===k));
+    b.addEventListener("click",()=>{state[key]=k; box.querySelectorAll(".chip").forEach(c=>c.setAttribute("aria-pressed",String(c.dataset.k===k))); if(onPick) onPick()});
+    box.appendChild(b);
+  }
+}
+(()=>{
+  const box=$("cropbox"); let drag=null;
+  box.addEventListener("pointerdown",e=>{
+    const it=cur(); if(!it) return; e.preventDefault();
+    drag={h:e.target.dataset.h||"move",x0:e.clientX,y0:e.clientY,c:{...it.crop},vr:view.getBoundingClientRect()};
+    box.setPointerCapture(e.pointerId);
+  });
+  box.addEventListener("pointermove",e=>{
+    if(!drag) return; const it=cur(), {vr,c}=drag;
+    const W=it.img.naturalWidth, H=it.img.naturalHeight, r=ratioVal();
+    if(drag.h==="move"){
+      const du=(e.clientX-drag.x0)/vr.width, dv=(e.clientY-drag.y0)/vr.height;
+      it.crop={...c,x:Math.min(1-c.w,Math.max(0,c.x+du)),y:Math.min(1-c.h,Math.max(0,c.y+dv))};
+    }else{
+      const dx=drag.h.includes("e")?1:-1, dy=drag.h.includes("s")?1:-1;
+      const ax=(dx>0?c.x:c.x+c.w)*W, ay=(dy>0?c.y:c.y+c.h)*H;
+      const px=clamp((e.clientX-vr.left)/vr.width)*W, py=clamp((e.clientY-vr.top)/vr.height)*H;
+      const maxW=dx>0?W-ax:ax, maxH=dy>0?H-ay:ay, minS=Math.min(W,H)*.08;
+      let w=Math.max(minS,(px-ax)*dx), h=Math.max(minS,(py-ay)*dy);
+      if(r){w=Math.max(w,h*r); h=w/r; if(w>maxW){w=maxW;h=w/r} if(h>maxH){h=maxH;w=h*r}}
+      else{w=Math.min(w,maxW); h=Math.min(h,maxH)}
+      const x=dx>0?ax:ax-w, y=dy>0?ay:ay-h;
+      it.crop={x:x/W,y:y/H,w:w/W,h:h/H};
+    }
+    placeCrop();
+  });
+  const end=()=>{if(!drag) return; drag=null; drawThumbs()};
+  box.addEventListener("pointerup",end); box.addEventListener("pointercancel",end);
+})();
+function drawThumbs(){
+  clearTimeout(thumbTimer);
+  thumbTimer=setTimeout(()=>{
+    const it=cur();
+    for(const pr of PRESETS){
+      const holder=document.querySelector(`.frame[data-id="${pr.id}"] .tw`);
+      holder.innerHTML="";
+      if(!it){const ph=document.createElement("div");ph.className="ph";holder.appendChild(ph);continue}
+      const src=cropCanvas(it.thumb,it.crop), [lx,ly]=localFocus(it);
+      const c=render(src,params(pr.id,state.intensity,null),lx,ly,sc(src));
+      c.setAttribute("aria-hidden","true"); holder.appendChild(c);
+    }
+  },60);
+}
+function buildStrip(){
+  const s=$("strip");
+  for(const pr of PRESETS){
+    const b=document.createElement("button");
+    b.type="button"; b.className="frame"; b.dataset.id=pr.id;
+    b.innerHTML=`<div class="tw"></div><div><b></b><span></span></div>`;
+    b.querySelector("b").textContent=pr.name; b.querySelector("span").textContent=pr.desc;
+    b.addEventListener("click",()=>{state.preset=pr.id;syncStrip();drawPreview()});
+    s.appendChild(b);
+  }
+  syncStrip();
+}
+function syncStrip(){document.querySelectorAll(".frame").forEach(f=>f.setAttribute("aria-pressed",String(f.dataset.id===state.preset)))}
+function buildSliders(){
+  const box=$("sliders");
+  for(const a of ADJ){
+    const row=document.createElement("div"); row.className="row";
+    row.innerHTML=`<label for="adj-${a.k}"></label><input type="range" id="adj-${a.k}" min="-100" max="100" value="0"><output>0</output>`;
+    row.querySelector("label").textContent=a.label;
+    const inp=row.querySelector("input"), out=row.querySelector("output");
+    inp.addEventListener("input",()=>{state.adj[a.k]=+inp.value; out.textContent=(inp.value>0?"+":"")+inp.value; drawPreview()});
+    inp.addEventListener("dblclick",()=>{inp.value=0;inp.dispatchEvent(new Event("input"))});
+    box.appendChild(row);
+  }
+}
+function buildQueue(){
+  const q=$("queue"); q.innerHTML="";
+  state.images.forEach((it,i)=>{
+    const b=document.createElement("button"); b.type="button"; b.className="qitem";
+    b.setAttribute("aria-current",String(i===state.cur)); b.setAttribute("aria-label","Foto "+it.name);
+    const im=document.createElement("img"); im.src=it.url; im.alt=""; b.appendChild(im);
+    const x=document.createElement("button"); x.type="button"; x.className="x"; x.textContent="×"; x.setAttribute("aria-label","Remover "+it.name);
+    x.addEventListener("click",e=>{e.stopPropagation(); URL.revokeObjectURL(it.url); state.images.splice(i,1);
+      const ci=state.collage.indexOf(it); if(ci>=0) state.collage.splice(ci,1);
+      if(state.cur>=state.images.length) state.cur=state.images.length-1; refreshAll()});
+    b.appendChild(x);
+    const cb=document.createElement("button"); cb.type="button"; cb.className="cb";
+    const k=state.collage.indexOf(it);
+    cb.setAttribute("aria-pressed",String(k>=0)); cb.textContent=k>=0?String(k+1):"+";
+    cb.setAttribute("aria-label",(k>=0?"Tirar da colagem: ":"Incluir na colagem: ")+it.name);
+    cb.addEventListener("click",e=>{e.stopPropagation();
+      const j=state.collage.indexOf(it);
+      if(j>=0) state.collage.splice(j,1);
+      else if(state.collage.length>=4){setMsg("A colagem aceita até 4 fotos.",true);return}
+      else state.collage.push(it);
+      buildQueue(); drawCollage()});
+    b.appendChild(cb);
+    b.addEventListener("click",()=>{state.cur=i;refreshAll()});
+    q.appendChild(b);
+  });
+}
+function refreshAll(){
+  const has=state.images.length>0;
+  $("empty").hidden=has; view.hidden=!has; $("under").hidden=!has;
+  $("exportOne").disabled=!has; $("exportAll").disabled=state.images.length<2;
+  if(!has){$("focusMark").style.display="none"; $("cropbox").style.display="none"; if(state.cropping) setCropping(false)}
+  buildQueue(); drawPreview(); drawThumbs(); drawCollage();
+}
+
+/* ---------- Colagem com fade ---------- */
+const CFORMATS=[["4:5","4:5 · 1080×1350",1080,1350],["1:1","1:1 · 1080×1080",1080,1080],["9:16","9:16 · 1080×1920",1080,1920],["16:9","16:9 · 1920×1080",1920,1080]];
+const CLAYOUTS=[["v","Empilhada"],["h","Lado a lado"]];
+let collageOn=false, cTimer=0;
+function fadeGradient(m,vert,o){
+  const g=vert?m.createLinearGradient(0,0,0,o):m.createLinearGradient(0,0,o,0);
+  for(let i=0;i<=8;i++){const t=i/8, s=t*t*(3-2*t); g.addColorStop(t,`rgba(0,0,0,${s})`)}
+  return g;
+}
+function renderCollage(scale,full){
+  const items=state.collage; if(items.length<2) return null;
+  const f=CFORMATS.find(c=>c[0]===state.cFormat), W=Math.round(f[2]*scale), H=Math.round(f[3]*scale);
+  const out=makeCanvas(W,H), ctx=out.getContext("2d"); ctx.fillStyle="#000"; ctx.fillRect(0,0,W,H);
+  const n=items.length, vert=state.cLayout==="v", L=vert?H:W, base=L/n, o=base*state.cFade/100;
+  const P=params(state.preset,state.intensity,state.adj), applyLook=$("cLook").checked;
+  items.forEach((it,i)=>{
+    const a=Math.round(i*base-(i>0?o/2:0)), b=Math.round((i+1)*base+(i<n-1?o/2:0));
+    const tw=vert?W:b-a, th=vert?b-a:H;
+    const src=full?it.img:it.prev, sw=src.naturalWidth||src.width, sh=src.naturalHeight||src.height, ta=tw/th;
+    let cw,ch; if(sw/sh>ta){ch=sh;cw=sh*ta}else{cw=sw;ch=sw/ta}
+    const cx=Math.min(Math.max(it.fx*sw-cw/2,0),sw-cw), cy=Math.min(Math.max(it.fy*sh-ch/2,0),sh-ch);
+    let t=makeCanvas(tw,th); const tx=t.getContext("2d"); tx.imageSmoothingQuality="high"; tx.drawImage(src,cx,cy,cw,ch,0,0,tw,th);
+    if(applyLook) t=render(t,P,(it.fx*sw-cx)/cw,(it.fy*sh-cy)/ch,sc(t));
+    if(i>0&&o>1){const m=t.getContext("2d"); m.globalCompositeOperation="destination-in"; m.fillStyle=fadeGradient(m,vert,o); m.fillRect(0,0,tw,th)}
+    ctx.drawImage(t,vert?0:a,vert?a:0);
+  });
+  return out;
+}
+function drawCollage(){
+  const n=state.collage.length;
+  $("cSave").disabled=n<2;
+  $("cHint").textContent=n<2?"Marque de 2 a 4 fotos na fila com o botão “+”, na ordem em que devem aparecer.":n+" fotos marcadas. A ordem segue os números na fila.";
+  clearTimeout(cTimer);
+  if(!collageOn) return;
+  if(n<2){$("collageBox").hidden=true; return}
+  cTimer=setTimeout(()=>{
+    const out=renderCollage(.5,false); if(!out) return;
+    const v=$("collageView"); v.width=out.width; v.height=out.height; v.getContext("2d").drawImage(out,0,0);
+    $("collageBox").hidden=false;
+  },80);
+}
+
+/* events */
+$("pickBtn").onclick=()=>fileIn.click();
+$("addBtn").onclick=()=>fileIn.click();
+fileIn.onchange=()=>{addFiles(fileIn.files); fileIn.value=""};
+["dragenter","dragover"].forEach(ev=>stage.addEventListener(ev,e=>{e.preventDefault();stage.classList.add("drag")}));
+["dragleave","drop"].forEach(ev=>stage.addEventListener(ev,e=>{e.preventDefault();stage.classList.remove("drag")}));
+stage.addEventListener("drop",e=>{if(e.dataTransfer?.files?.length) addFiles(e.dataTransfer.files)});
+view.addEventListener("click",e=>{
+  const it=cur(); if(!it||state.cropping) return; const r=view.getBoundingClientRect();
+  it.fx=it.crop.x+clamp((e.clientX-r.left)/r.width)*it.crop.w; it.fy=it.crop.y+clamp((e.clientY-r.top)/r.height)*it.crop.h;
+  drawPreview(); drawThumbs();
+});
+const cmp=$("compareBtn");
+const on=e=>{e.preventDefault();comparing=true;$("badge").style.display="block";drawPreview()};
+const off=()=>{if(!comparing)return;comparing=false;$("badge").style.display="none";drawPreview()};
+cmp.addEventListener("pointerdown",on); cmp.addEventListener("pointerup",off); cmp.addEventListener("pointerleave",off); cmp.addEventListener("pointercancel",off);
+cmp.addEventListener("keydown",e=>{if((e.key===" "||e.key==="Enter")&&!e.repeat)on(e)});
+cmp.addEventListener("keyup",e=>{if(e.key===" "||e.key==="Enter")off()});
+$("intensity").addEventListener("input",e=>{state.intensity=+e.target.value;$("intensityOut").textContent=e.target.value+"%";drawPreview();drawThumbs()});
+$("resetAdj").onclick=()=>{document.querySelectorAll("#sliders input").forEach(i=>{i.value=0;i.dispatchEvent(new Event("input"))})};
+window.addEventListener("resize",()=>{placeFocus();placeCrop()});
+$("cropBtn").onclick=()=>setCropping(!state.cropping);
+$("cMake").onclick=()=>{
+  if(state.collage.length<2){setMsg("Marque pelo menos 2 fotos na fila com o botão “+”.",true);return}
+  setMsg(""); collageOn=true; drawCollage();
+  setTimeout(()=>$("collageBox").scrollIntoView({behavior:"smooth",block:"nearest"}),200);
+};
+$("cFade").addEventListener("input",e=>{state.cFade=+e.target.value;$("cFadeOut").textContent=e.target.value+"%";drawCollage()});
+$("cLook").addEventListener("change",drawCollage);
+$("cSave").onclick=async()=>{
+  if(state.collage.length<2) return; busy(true,"Montando a colagem…");
+  await new Promise(r=>setTimeout(r,30));
+  const out=renderCollage(1,true), blob=await toBlob(out); busy(false);
+  saveBlob(`colagem-${state.collage.length}fotos.jpg`,blob);
+};
+
+/* export */
+let downloads=null;
+(async()=>{try{downloads=await window.claude?.use?.("downloads")}catch(e){downloads=null}
+  })();
+
+function fullRender(it){
+  const W=it.img.naturalWidth, H=it.img.naturalHeight, c=it.crop;
+  const sx=c.x*W, sy=c.y*H, sw=c.w*W, sh=c.h*H;
+  let s=state.outSize==="orig"?Math.min(1,4096/Math.max(sw,sh)):(+state.outSize)/sw;
+  s=Math.min(s,8192/Math.max(sw,sh));
+  const tw=Math.max(1,Math.round(sw*s)), th=Math.max(1,Math.round(sh*s));
+  const src=makeCanvas(tw,th), x=src.getContext("2d"); x.imageSmoothingQuality="high";
+  x.drawImage(it.img,sx,sy,sw,sh,0,0,tw,th);
+  const [lx,ly]=localFocus(it);
+  return render(src,params(state.preset,state.intensity,state.adj),lx,ly,sc(src));
+}
+const toBlob=c=>new Promise(r=>c.toBlob(r,"image/jpeg",.93));
+const slug=()=>PRESETS.find(p=>p.id===state.preset).id;
+function busy(on,t){$("busy").style.display=on?"block":"none";if(t)$("busy").textContent=t;
+  $("exportOne").disabled=on||!state.images.length; $("exportAll").disabled=on||state.images.length<2}
+async function saveBlob(name,blob){
+  if(!downloads){ // fora do claude.ai: download direto pelo navegador
+    const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+    document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+    setMsg("Arquivo baixado: "+name); return;
+  }
+  try{await downloads.save({filename:name,data:blob});setMsg("Arquivo salvo: "+name)}
+  catch(e){
+    if(e?.code==="declined") setMsg("Download cancelado.");
+    else if(e?.code==="rate_limited") setMsg("Já existe um download esperando confirmação.",true);
+    else setMsg("Não foi possível baixar aqui ("+(e?.code||"erro")+").",true);
+  }
+}
+$("exportOne").onclick=async()=>{
+  const it=cur(); if(!it) return; busy(true,"Revelando em alta…");
+  await new Promise(r=>setTimeout(r,30));
+  const blob=await toBlob(fullRender(it)); busy(false);
+  saveBlob(`${it.name}-${slug()}.jpg`,blob);
+};
+$("exportAll").onclick=async()=>{
+  if(typeof JSZip==="undefined"){setMsg("O compactador não carregou. Baixe as fotos uma a uma.",true);return}
+  const zip=new JSZip(), used={};
+  for(let i=0;i<state.images.length;i++){
+    busy(true,`Revelando ${i+1} de ${state.images.length}…`);
+    await new Promise(r=>setTimeout(r,30));
+    const it=state.images[i]; let n=`${it.name}-${slug()}`; used[n]=(used[n]||0)+1; if(used[n]>1)n+="-"+used[n];
+    zip.file(n+".jpg",await toBlob(fullRender(it)));
+  }
+  busy(true,"Compactando…");
+  const blob=await zip.generateAsync({type:"blob"}); busy(false);
+  saveBlob(`fotos-${slug()}.zip`,blob);
+};
+
+buildStrip(); buildSliders();
+buildChips("ratios",RATIOS,"ratio",()=>{
+  state.images.forEach(it=>it.crop=centerCrop(it));
+  if(state.images.length&&state.ratio!=="livre"&&!state.cropping) setCropping(true); else {drawPreview(); drawThumbs()}
+});
+buildChips("sizes",SIZES,"outSize");
+buildChips("cLayouts",CLAYOUTS,"cLayout",drawCollage);
+buildChips("cFormats",CFORMATS,"cFormat",drawCollage);
+refreshAll();
+})();
+</script>
+</body>
+</html>
